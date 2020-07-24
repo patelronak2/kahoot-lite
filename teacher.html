@@ -1,0 +1,432 @@
+<html>
+  <head>
+	<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+	<script src="/socket.io/socket.io.js"></script>
+	<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+	
+	<script>
+		$(document).ready(function(){
+		  var socket = io();
+		  var uniqueId = 0;	
+		  var inputOptions = 2;
+		  var pairs = 3;
+		  var answerReport = [];
+		  var totalAnswerRecieved = 0;
+		  var totalCorrectAnswer = 0;
+		  var totalIncorrectAnswer = 0;
+		  var average = 0;
+		  $("#submit").click(function(){
+				var flag = true;
+				
+				//checking for empty input field
+				$(":text").each(function(){
+					if($(this).val() == '' && !$(this).is(":hidden")){
+						$(this).addClass("border border-danger");
+						flag = false;
+					}
+				});
+				if(flag){
+					//Determining the type of question and preparing the data to send
+					uniqueId++;	
+					if($("#multipleChoice").is(":checked")){
+						var options = [];
+						var answer = [];
+						for (var i = 0; i < inputOptions; i++){
+							var id = "#inputOption" + (i + 1);
+							var checkBoxValue = "#option"+ (i +1);
+							options[i] = $(id).val();
+							answer[i] = $(checkBoxValue).is(":checked");
+						}
+						var multipleChoice = {
+							type: "Multiple Choice",
+							id: uniqueId,
+							duration: $("#duration").val(),
+							points: $("#points").val(),
+							question: $("#question").val(),
+							choices: options,
+							answer: answer							
+						};
+						//Call Function that emits data to server
+						socket.emit('question', JSON.stringify(multipleChoice));
+					}else{
+						var key = [];
+						var value = [];
+						for (var i = 0; i < pairs; i++){
+							var keyid = "#key" + (i+1);
+							var valueid = "#value" + (i+1);
+							key[i] = $(keyid).val();
+							value[i] = $(valueid).val();
+						}
+						var matchMaking = {
+							type: "Matching",
+							id: uniqueId,
+							duration: $("#duration").val(),
+							points: $("#points").val(),
+							question: $("#description").val(),
+							key: key,
+							value: value
+						};
+						//Call Function that emits data to server
+						socket.emit('question', JSON.stringify(matchMaking));
+					}
+					
+					//Resetting form and hiding it
+					$(":text").each(function(){
+						$(this).val("").removeClass("border border-danger");
+					});
+					$("#appended").remove();
+					inputOptions = 2;
+					pairs = 3;
+					$("#questionForm").addClass("d-none");
+
+					//Display CountDown and Results with Button Disabled
+					$("#timeLoop").removeClass("d-none");
+					$("#results").removeClass("d-none")
+					$("#displayForm").addClass("disabled");
+					
+					var timer = $("#duration").val();
+					
+					//Function that gets called every second
+					var mytTimer = setInterval(function(){ 
+						$("#remainingSeconds").html(timer);
+						$("#totalAnswers").html(totalAnswerRecieved.toString());
+						$("#totalCorrect").html(totalCorrectAnswer.toString());
+						$("#averagePrecent").html(average.toString());
+						if(timer == 0){
+							clearInterval(mytTimer);
+							$("#timeLoop").addClass("d-none");
+							$("#displayForm").removeClass("disabled");
+						}
+						timer--;
+					}, 1000);
+					return false;
+				}else{
+					return false;
+				}
+		  });
+		  //Catch Data
+		  socket.on('answer', function(data){
+			totalAnswerRecieved++;
+			var student = JSON.parse(data);
+			if(student.isCorrect == 1){
+				totalCorrectAnswer++;
+			}else{
+				totalIncorrectAnswer++;
+			}
+			average = (totalCorrectAnswer * 100)/totalAnswerRecieved;
+			
+			var isPresent = false;
+			var index = -1;
+			for(var i = 0; i < answerReport.length; i++){
+				if(answerReport[i].name == student.name){
+					isPresent = true;
+					index = i;
+				}
+			}
+			if(isPresent && (index != -1)){
+				answerReport[index].score = parseInt(student.cumulativeScore);
+				answerReport[index].isTrue = student.isCorrect;
+				answerReport[index].id = student.id;
+			}else{
+				answerReport.push({name: student.name, score: parseInt(student.cumulativeScore), isTrue: student.isCorrect, id: student.id});
+			}
+			
+			answerReport.sort(function(a,b){
+				return b.score - a.score
+			});
+			
+			//Updating result in real-time
+			var listCumulativeScore = '';
+			var listCorrect = '';
+			var listIncorrect = '';
+			for(var i = 0; i < answerReport.length; i++){
+				listCumulativeScore += '<tr><td>' + (i+1) + '</td>';
+				if(answerReport[i].isTrue == 1 && answerReport[i].id == uniqueId){
+					listCorrect += '<tr>';
+					listCorrect += '<td>'+ answerReport[i].name +'</td>';
+					
+				}
+				if(answerReport[i].isTrue == 0 && answerReport[i].id == uniqueId){
+					listIncorrect += '<tr><td>'+ answerReport[i].name +'</td>';
+					
+				}
+				listCumulativeScore += '<td>'+ answerReport[i].name +'</td><td>'+ answerReport[i].score +'</td>';
+				listIncorrect += '</tr>';
+				listCorrect += '</tr>';
+				listCumulativeScore += '</tr>';
+			}
+			$("#totalAnswers").html(totalAnswerRecieved.toString());
+			$("#totalCorrect").html(totalCorrectAnswer.toString());
+			$("#averagePrecent").html(average.toString());
+			$("#listCorrectName").html(listCorrect);
+			$("#listIncorrectName").html(listIncorrect);
+			$("#listCumulativeScore").html(listCumulativeScore);
+			
+			
+		  });
+		  //---------------------------------------------------------------------------------------------------
+		  $("#multipleChoice").click(function(){
+				$("#matchingQuestions").addClass("d-none");
+				$("#multipleQuestions").removeClass("d-none");
+		  });
+		  $("#matchMaking").click(function(){
+				$("#multipleQuestions").addClass("d-none");
+				$("#matchingQuestions").removeClass("d-none");
+		  });
+		  
+		  $("#addOptionButton").click(function(){
+				inputOptions += 1;
+				var checkboxId = "option" + inputOptions;
+				var inputElementId = "inputOption" + inputOptions;
+				var addInputOption = '<div class="input-group mb-3" id="appended">';
+				addInputOption += '<div class="input-group-prepend">';
+				addInputOption += '<div class="input-group-text">';
+				addInputOption += '<input type="checkbox" id="' + checkboxId + '" name="answer"></div></div>';
+				addInputOption += '<input id="' + inputElementId + '" type="text" class="form-control" name="' + checkboxId + '" required autofocus></div>';
+				
+				$("#inputOptions").append(addInputOption);
+				return false;
+		  });
+		  
+		  $("#addPairButton").click(function(){
+				pairs += 1;
+				var keyId = "key" + pairs;
+				var valueId = "value" + pairs;
+				
+				var addPair = '<div class="row justify-content-center mb-2" id="appended"><div class="col-lg-5">';
+				addPair += '<input id="' + keyId + '" type="text" class="form-control" name="' + keyId + '" required autofocus placeholder="Key"></div>';
+				addPair += '<div class="col-lg-5">';
+				addPair += '<input id="' + valueId + '" type="text" class="form-control" name="' + valueId + '" required autofocus placeholder="value"></div></div>';
+				
+				$("#pairs").append(addPair);
+				return false;
+		  });
+		  
+		  $("#displayForm").click(function(){
+			$("#results").addClass("d-none");
+			$("#questionForm").removeClass("d-none");
+			//reset variables
+			$("#totalAnswers").html("");
+			$("#totalCorrect").html("");
+			$("#averagePrecent").html("");
+			$("#listCorrectName").html("");
+			$("#listIncorrectName").html("");
+			totalAnswerRecieved = 0;
+			totalCorrectAnswer = 0;
+			totalIncorrectAnswer = 0;
+			average = 0;
+		  });
+		  
+		});
+	</script>
+    <title>Teacher</title>
+  </head>
+  <body>
+	<div class="container">
+		<div class="row justify-content-center">
+			<div class="col-md-10">
+				<p class="display-4 text-center">Teacher's Dashboard</p>
+				<div class="card" id="questionForm">
+				  <h5 class="card-header">Create Question</h5>
+				  <div class="card-body">
+					
+					<form method="POST" action="#">
+						<div class="form-group row">
+							<label for="duration" class="col-md-4 text-md-right">Duration</label>
+							<div class="col-md-6">
+								<input id="duration" type="range" class="custom-range" name="duration" min="10" max="90" step="5" value="20" required >
+							</div>
+						</div>
+						<div class="form-group row">
+							<label for="points" class="col-md-4 col-form-label text-md-right">Points Worth</label>
+
+							<div class="col-md-6">
+								<input id="points" type="number" class="form-control" name="points" required autofocus>
+							</div>
+						</div>
+						<div class="form-group row">
+							<label for="questionType" class="col-md-4 col-form-label text-md-right">Question Type</label>
+
+							<div class="col-md-6 pt-2">
+								<div class="custom-control custom-radio custom-control-inline">
+								  <input type="radio" id="multipleChoice" name="questionType" required class="custom-control-input">
+								  <label class="custom-control-label" for="multipleChoice">Multiple-Choice Questions</label>
+								</div>
+								<div class="custom-control custom-radio custom-control-inline">
+								  <input type="radio" id="matchMaking" name="questionType" checked class="custom-control-input">
+								  <label class="custom-control-label" for="matchMaking">Matching Questions</label>
+								</div>
+							</div>
+						</div>
+						<div class="row justify-content-center">
+							<div class="col-md-8">
+								<div class="card" id="matchingQuestions">
+									<h5 class="card-header">Matching Questions</h5>
+									<div class="card-body">
+										<div class="form-group row">
+											<label for="description" class="col-md-4 col-form-label text-md-right">Description</label>
+
+											<div class="col-md-6">
+												<input id="description" type="text" class="form-control" name="description" required autofocus>
+											</div>
+										</div>
+										<div id="pairs">
+											<div class="row justify-content-center mb-2">
+												<div class="col-lg-5">
+													<input id="key1" type="text" class="form-control" name="key1" required autofocus placeholder="Key">
+												</div>		
+								
+												<div class="col-lg-5">
+													<input id="value1" type="text" class="form-control" name="value1" required autofocus placeholder="value">
+												</div>
+											</div>
+											<div class="row justify-content-center mb-2">
+												<div class="col-lg-5">
+													<input id="key2" type="text" class="form-control" name="key2" required autofocus placeholder="Key">
+												</div>		
+								
+												<div class="col-lg-5">
+													<input id="value2" type="text" class="form-control" name="value2" required autofocus placeholder="value">
+												</div>
+											</div>
+											<div class="row justify-content-center mb-2">
+												<div class="col-lg-5">
+													<input id="key3" type="text" class="form-control" name="key3" required autofocus placeholder="Key">
+												</div>		
+								
+												<div class="col-lg-5">
+													<input id="value3" type="text" class="form-control" name="value3" required autofocus placeholder="value">
+												</div>
+											</div>
+										</div>
+										<div class="form-group row mb-0 mt-2">
+											<div class="col-md-6 offset-md-4">
+												<a href="#" id="addPairButton" class="btn btn-light">
+													Add Pair
+												</a>
+											</div>
+										</div>
+									</div>
+								</div>
+								
+								<div class="card d-none" id="multipleQuestions">
+									<h5 class="card-header">Multiple-Choice Questions</h5>
+									<div class="card-body">
+										<div class="form-group row">
+											<label for="question" class="col-md-4 col-form-label text-md-right">Question</label>
+
+											<div class="col-md-6">
+												<input id="question" type="text" class="form-control" name="question" required autofocus>
+											</div>
+										</div>
+										<div class="form-group row">
+											<label for="answer" class="col-md-4 col-form-label text-md-right">Possible Answer</label>
+
+											<div class="col-md-6" id="inputOptions">
+												<div class="input-group mb-3">
+												  <div class="input-group-prepend">
+													<div class="input-group-text">
+													  <input type="checkbox" id="option1" name="answer" checked>
+													</div>
+												  </div>
+												  <input id="inputOption1" type="text" class="form-control" name="option1" required autofocus>
+												</div>
+												<div class="input-group mb-3">
+												  <div class="input-group-prepend">
+													<div class="input-group-text">
+													  <input type="checkbox" id="option2" name="answer">
+													</div>
+												  </div>
+												  <input id="inputOption2" type="text" class="form-control" name="option2" required autofocus>
+												</div>
+											</div>
+										</div>
+										<div class="form-group row mb-0 mt-2">
+											<div class="col-md-6 offset-md-4">
+												<a href="#" id="addOptionButton" class="btn btn-light">
+													Add Option
+												</a>
+											</div>
+										</div>
+									</div>
+								</div>
+							</div>
+						</div>
+						
+						<div class="form-group row mb-0 mt-2">
+							<div class="col-md-6 offset-md-4">
+								<a href="#" id="submit" class="btn btn-primary">
+									Submit
+								</a>
+							</div>
+						</div>
+					</form>
+				  </div>
+				</div>
+				<!-- Display CountDown -->
+				<div class="d-none text-center" id="timeLoop">
+					<p class="display-4">Time Remaining: <span id="remainingSeconds">-</span> seconds</p>
+				</div>
+				<div class="card d-none" id="results">
+					<h5 class="card-header">Answer Summary</h5>
+					<div class="card-body">
+						<table class="table mb-3">
+							<thead>
+							<tr>
+								<th>Total Answer Recieved</th><th id="totalAnswers"></th>
+							</tr>
+							</thead>
+							<tbody>
+								<tr>
+									<td>Correct Answers</td><td id="totalCorrect"></td>
+								</tr>
+								<tr>
+									<td>Correct Answers Percentage</td><td><span id="averagePrecent"></span>%</td>
+								</tr>
+							</tbody>
+						</table>
+						<table class="table mb-3">
+							<thead>
+							<tr>
+								<th class="text-success">List of Student: Correct Answer</th>
+							</tr>
+							</thead>
+							<tbody id="listCorrectName">
+								
+							</tbody>
+						</table>
+						<table class="table mb-3">
+							<thead>
+							<tr>
+								<th class="text-danger">List of Student: InCorrect Answer</th>
+							</tr>
+							</thead>
+							<tbody id="listIncorrectName">
+								
+							</tbody>
+						</table>
+						<table class="table mb-3">
+							<thead>
+							<tr>
+								<th>#</th><th>Name</th><th>Cumulative Score</th>
+							</tr>
+							</thead>
+							<tbody id="listCumulativeScore">
+								
+							</tbody>
+						</table>
+						<div class="form-group row mb-0 mt-2">
+							<div class="col-md-9 offset-md-1">
+								<a href="#" id="displayForm" class="btn btn-primary">New Question</a>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+	</div>
+	<script src="https://code.jquery.com/jquery-3.3.1.slim.min.js" integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo" crossorigin="anonymous"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js" integrity="sha384-UO2eT0CpHqdSJQ6hJty5KVphtPhzWj9WO1clHTMGa3JDZwrnQq4sF86dIHNDz0W1" crossorigin="anonymous"></script>
+	<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js" integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM" crossorigin="anonymous"></script>
+  </body>
+</html>

@@ -1,0 +1,340 @@
+<!doctype html>
+<html>
+  <head>
+	<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css" integrity="sha384-ggOyR0iXCbMQv3Xipma34MD+dH/1fQ784/j6cY/iJTQUOhcWr7x9JvoRxT2MZw1T" crossorigin="anonymous">
+	<script src="/socket.io/socket.io.js"></script>
+	<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+    <title>Student</title>
+	<script>
+		$(document).ready(function(){
+			var socket = io();
+			var question = "";
+			var cumulativeScore = 0;
+			var studentName = "";
+			var student = "";
+			var answerReport = [];
+			var questionId = 0;
+			$("#participateForm").removeClass("d-none");
+			$("#waiting").addClass("d-none");
+			$("#submit").click(function(){
+				
+				if(!$("#name").val()){
+					$("#name").addClass("border border-danger");
+					return false;
+				}else{
+					//student name entered and waiting for the question
+					studentName = $("#name").val();
+					  socket.on('question', function(data){
+						question = JSON.parse(data);
+						questionId = question.id;
+						var timer = question.duration;
+						var x = setInterval(function() {
+						  $("#timer").html(timer);
+						  timer--;
+						  
+						  if (timer == 0) {
+							clearInterval(x);
+							//Question Expired...
+							//Waiting for the next question
+							$("#waiting").removeClass("d-none");
+							$("#cumulativeResults").removeClass("d-none");
+							$("#currentResults").addClass("d-none");
+							$("#displayTimer").addClass("d-none");
+							$("#questionContainer").addClass("d-none");
+							
+						  }
+						}, 1000);
+						$("#waiting").addClass("d-none");
+						$("#currentResults").addClass("d-none");
+						$("#questionContainer").removeClass("d-none");
+						$("#cumulativeResults").addClass("d-none");
+						$("#points").html(question.points);
+						$("#question").html(question.question);
+						$("#displayTimer").removeClass("d-none");
+						if(question.type == "Multiple Choice"){
+							$("#cardHeader").html(question.type);
+							$("#options").removeClass("d-none");
+							$("#key-pair").addClass("d-none");
+							var optionhtml = '';
+							for(var i = 0; i < question.choices.length; i++){
+								var checkboxId = "answerId" + (i + 1);
+								optionhtml += '<div class="custom-control custom-checkbox">';
+								optionhtml += '<input type="checkbox" class="custom-control-input" id="' + checkboxId + '">';
+								optionhtml += '<label class="custom-control-label display-5" for="' + checkboxId + '">' + question.choices[i] + '</label></div>';
+							}
+							$("#options").html(optionhtml);
+						}else{
+							$("#cardHeader").html(question.type);
+							$("#options").addClass("d-none");
+							$("#key-pair").removeClass("d-none");
+							
+							
+							var rowhtml = '';
+							for (var i = 0; i < question.key.length; i++){
+								
+								var dropdownId = "answerId" + (i + 1);
+								rowhtml += '<tr class="row">';
+								rowhtml += '<td class="col-md-4">' + question.key[i] +'</td>';
+								rowhtml += '<td class="col text-md-left"><div class="form-group">'
+								rowhtml += '<select class="form-control" id="' + dropdownId + '">';
+								rowhtml += '<option value="" selected disabled hidden>Select One</option>';
+								for(var j = 0; j < question.value.length; j++){
+									if(i == j){
+										rowhtml += '<option value="true">'+ question.value[j] +'</option>';
+									}else{
+										rowhtml += '<option value="false">'+ question.value[j] +'</option>';
+									}
+								}
+								
+								rowhtml += '</select></div></td></tr>';
+							}
+							$("#tableRow").html(rowhtml);
+						}
+						
+					  });
+					//catch Answer report
+					
+					socket.on('answer',function(data){
+						student = JSON.parse(data);
+						//sort in descending order
+						var isPresent = false;
+						var index = -1;
+						for(var i = 0; i < answerReport.length; i++){
+							if(answerReport[i].name == student.name){
+								isPresent = true;
+								index = i;
+							}
+						}
+						if(isPresent && (index != -1)){
+							answerReport[index].score = parseInt(student.cumulativeScore);
+						}else{
+							answerReport.push({name: student.name, score: parseInt(student.cumulativeScore)});
+						}
+						
+						answerReport.sort(function(a,b){
+							return b.score - a.score
+						});
+						
+						var displayList = '<table class="table"><thead>';
+						displayList += '<tr><th scope="col">#</th><th scope="col">Name</th><th scope="col">Score</th></tr>';
+						displayList += '</thead><tbody>';
+						for(var i = 0; i < answerReport.length; i++){
+							displayList += '<tr>';
+							displayList += '<th scope="row">'+ (i+1) +'</th>';
+							displayList += '<td>' + answerReport[i].name + '</td>';
+							displayList += '<td>' + answerReport[i].score + '</td>';
+							displayList += '</tr>';
+						}
+						displayList += '</tbody></table>';
+						$("#studentList").html(displayList);
+						
+					});
+				
+					//Reset the form
+					$("#name").removeClass("border border-danger");
+					$("#participateForm").addClass("d-none");
+					$("#waiting").removeClass("d-none");
+					
+					
+					return false;
+				}
+			});
+			$("#submitAnswer").click(function(){
+				if(question.type == "Multiple Choice"){			
+					var flag = 0;
+					for(var i=0; i < question.choices.length; i++){
+						var id = "#answerId" + (i + 1);
+						if($(id).is(":checked") == question.answer[i]){
+							flag++;
+						}
+					}
+										
+					$("#questionContainer").addClass("d-none");
+					$("#currentResults").removeClass("d-none");
+					//Display correct answer 
+					var correctAnswer = '<p class="h5">Correct Answers</p>';
+					for(var i = 0; i < question.choices.length; i++){
+						correctAnswer += '<div class="custom-control custom-checkbox">';
+						if(question.answer[i]){
+							correctAnswer += '<input type="checkbox" class="custom-control-input" disabled checked>';
+						}else{
+							correctAnswer += '<input type="checkbox" class="custom-control-input" disabled>';
+						}
+						
+						correctAnswer += '<label class="custom-control-label display-5">' + question.choices[i] + '</label></div>';
+					}
+					
+					$("#correctAnswer").html(correctAnswer);
+					if(flag == question.answer.length){
+						//Answered Corrected....
+						$("#pointsEarned").html(question.points);
+						cumulativeScore += parseInt(question.points);
+						$("#status").html("You answered correctly!").addClass("text-success").removeClass("text-danger");
+						
+						//Send Answer Report...
+						var student = {
+							name: studentName,
+							id: questionId,
+							cumulativeScore: cumulativeScore,
+							isCorrect: 1
+						};
+						socket.emit('answer', JSON.stringify(student));
+					}else{
+						//Answered Incorrectly
+						$("#status").html("Incorrect Answer!").addClass("text-danger").removeClass("text-success");
+						$("#pointsEarned").html("0");
+						
+						//Send Answer Report...
+						var student = {
+							name: studentName,
+							id: questionId,
+							cumulativeScore: cumulativeScore,
+							isCorrect: 0
+						};
+						socket.emit('answer', JSON.stringify(student));
+					}
+					
+					$("#totalPoints").html(cumulativeScore);
+				}else{
+					var flag = 0;
+					for (var i = 0; i < question.key.length; i++){
+						var dropdownId = "#answerId" + (i + 1);
+						if($(dropdownId).val() == "true"){
+							flag++
+						}
+					}
+					
+					$("#questionContainer").addClass("d-none");
+					$("#currentResults").removeClass("d-none");
+					var correctAnswer = '<p class="text-center h5">Correct Answers</p>';
+					for(var i = 0; i < question.key.length; i++){
+						correctAnswer += '<div class="row justify-content-center mb-1">';
+						correctAnswer += '<p class="col-md-5 text-md-right">' + question.key[i] + ': </p>';
+						correctAnswer += '<p class="col-md-5">' + question.value[i] + '</p>';
+						correctAnswer += '</div>';
+					}		
+					$("#correctAnswer").html(correctAnswer);
+					if(flag == question.key.length){
+					
+						//Answered Correct...
+						$("#pointsEarned").html(question.points);
+						cumulativeScore += parseInt(question.points);
+						$("#status").html("You answered correctly!").addClass("text-success").removeClass("text-danger");
+						
+						//Send Answer Report...
+						var student = {
+							name: studentName,
+							id: questionId,
+							cumulativeScore: cumulativeScore,
+							isCorrect: 1
+						};
+						socket.emit('answer', JSON.stringify(student));
+					}else{
+					
+						//incorrect answer...
+						$("#status").html("Incorrect Answer!").addClass("text-danger").removeClass("text-success");
+						$("#pointsEarned").html("0");
+						
+						//Send Answer Report...
+						var student = {
+							name: studentName,
+							id: questionId,
+							cumulativeScore: cumulativeScore,
+							isCorrect: 0
+						};
+						socket.emit('answer', JSON.stringify(student));
+					}
+					$("#totalPoints").html(cumulativeScore);
+				}
+			});
+		});
+	</script>
+  </head>
+  <body>
+	<div class="container">
+		<div class="row justify-content-center">
+			<div class="col-md-8">
+				<p class="display-4 text-center">Student Page</p>
+				<div class="card d-none" id="participateForm">
+				  <h5 class="card-header">Fill out the form below!</h5>
+				  <div class="card-body">
+					<form>
+						<div class="form-group row">
+							<label for="name" class="col-md-4 col-form-label text-md-right">Name</label>
+							<div class="col-md-6">
+								<input id="name" type="text" class="form-control" name="name" required autofocus >
+							</div>
+						</div>
+						<div class="form-group row mb-0 mt-2">
+							<div class="col-md-6 offset-md-4">
+								<a href="#" id="submit" class="btn btn-primary">
+									Participate
+								</a>
+							</div>
+						</div>
+					</form>
+				  </div>
+				</div>
+				<div class="text-center mt-3 d-none" id="waiting">
+					<p class="display-4">Waiting for the Question</p>
+					<div class="spinner-grow" style="width: 4rem; height: 4rem;" role="status">
+					  <span class="sr-only">Loading...</span>
+					</div>
+				</div>
+				<div class="row d-none" id="displayTimer">
+					<p class="h4 col">Total Points: <span id="points">55</span></p>
+					<p class="h4 col text-md-right">Time Remaining: <span id="timer"></span> seconds</p>
+				</div>
+				<div class="d-none" id="questionContainer">
+					
+					<div class="card" id="questionForm">
+					  <h5 class="card-header" id="cardHeader">Question Type here</h5>
+					  <div class="card-body">
+						<p class="h2" id="question">Question Goes Here</p>
+						<div class="p-2 d-none" id="options">
+						</div>
+						<div class="d-none" id="key-pair">
+						<div class="table-responsive-sm">
+							<table class="table table-sm col-sm-8 ml-3">
+							  <tbody id="tableRow">
+								
+							  </tbody>
+							</table>
+						</div>
+					  </div>
+					  <div class="form-group row mb-0 mt-2">
+						<div class="col-md-9 offset-md-1">
+							<a href="#" id="submitAnswer" class="btn btn-primary">
+								Submit
+							</a>
+						</div>
+					  </div>
+				    </div>
+				</div>
+			</div>
+			<div class="card d-none" id="currentResults">
+				<p class="card-header h4" id="status"></p>
+				<div class="card-body">
+					<div class="row justify-content-center">
+						<p class="col">Points earned: <span id="pointsEarned"></span></p>
+						<p class="col text-md-right">Cumulative Score: <span id="totalPoints"></span></p>
+					</div>
+				</div>
+				<div class="p-2 ml-2" id="correctAnswer">
+					
+				</div>
+			</div>
+			<div class="card d-none mt-5" id="cumulativeResults">
+				<h4 class="card-header">Cumulative Results</h4>
+				<div class="card-body" id="studentList">
+					
+				</div>
+			</div>
+		</div>
+	</div>
+	<!-- Bootstrap Scripts -->
+	<script src="https://code.jquery.com/jquery-3.3.1.slim.min.js" integrity="sha384-q8i/X+965DzO0rT7abK41JStQIAqVgRVzpbzo5smXKp4YfRvH+8abtTE1Pi6jizo" crossorigin="anonymous"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/popper.js/1.14.7/umd/popper.min.js" integrity="sha384-UO2eT0CpHqdSJQ6hJty5KVphtPhzWj9WO1clHTMGa3JDZwrnQq4sF86dIHNDz0W1" crossorigin="anonymous"></script>
+	<script src="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/js/bootstrap.min.js" integrity="sha384-JjSmVgyd0p3pXB1rRibZUAYoIIy6OrQ6VrjIEaFf/nJGzIxFDsf4x0xIM+B07jRM" crossorigin="anonymous"></script>
+  </body>
+</html>
